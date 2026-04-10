@@ -1,0 +1,544 @@
+---
+title: "FIT3152_A1"
+author: "JunqiZhou"
+date: "2026-03-16"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+```{r}
+rm(list = ls())
+set.seed(34572228) # Your Student Number
+VCData = read.csv("WVSExtract.csv")
+VC = VCData[sample(1:nrow(VCData),100000, replace=FALSE),]
+VC = VC[,c(1:3,sort(sample(4:50,25,replace=FALSE)),
+sort(sample(51:65,8,replace=FALSE)))]
+write.csv(VC, "FIT3152A1Data_JunqiZhou.csv", row.names = FALSE)
+```
+
+
+Introduction
+This report presents a systematic analysis of the World Values Survey (WVS) dataset, focusing on addressing three core research questions as outlined in the FIT3152 Assignment 1 brief. The foundational step of this analysis is the generation of a personal, reproducible dataset from the original WVSExtract.csv file, followed by exploratory data analysis (EDA), cross-country comparison, and time-trend analysis centered on the Russian Federation (RUS) as the focus country.
+The personal dataset was created using random sampling with a fixed seed (34572228, the author’s student ID) to ensure full reproducibility: 100,000 observations were randomly selected from the original WVS dataset without replacement, and the final dataset was structured to include 3 fixed contextual variables (Wave, Country, Year), 25 randomly selected attribute variables (e.g., Age, Happy, Health), and 8 randomly selected confidence variables for social organisations (prefixed with "C", e.g., CPolice, CGovernment). This sampling strategy ensures the personal dataset is representative of the global WVS sample while maintaining consistency for analysis.
+The primary objectives of this report are threefold: (1) conduct a comprehensive EDA to characterize the basic structure, variable properties, and missing value patterns of the personal dataset; (2) perform a static cross-country comparison between RUS and all other countries (ignoring time) to identify differences in attribute and confidence variables, and evaluate predictive relationships; (3) analyze dynamic time trends in RUS across WVS waves to understand how confidence in social organisations and its predictors have evolved over time. All analyses adhere to standard social science research practices, including treating ordinal survey responses as numerical variables (a common and validated approach for WVS data) and using listwise deletion for missing values (justified by the assumption of random missingness).
+The analysis is implemented in R (version 4.3.1) using key packages: tidyverse for data manipulation and visualization, naniar for missing value analysis, and corrplot for correlation matrix visualization. The code for dataset generation, EDA, and subsequent analyses is included as machine-readable text to ensure transparency and reproducibility, in line with the assignment requirements.
+
+"Generative AI was used in this assignment."
+
+Research Question 1: Exploratory Data Analysis (EDA)
+Analysis Objective
+The core objective of this exploratory data analysis (EDA) is to systematically describe the basic characteristics of the personal WVS dataset, including its dimensional structure, variable types (numeric/categorical), statistical properties of numerical variables (central tendency, dispersion), distribution of categorical variables (Country, Wave), missing value patterns, and bivariate correlations between key variables (e.g., Age, Happy, confidence variables). This EDA serves as a critical foundation for subsequent analyses by validating data quality, identifying key patterns, and justifying analytical assumptions (e.g., missing value treatment, variable type handling).
+
+
+Analysis Assumptions:
+(1) Missing Value Assumption: Missing values in the dataset are randomly distributed (Missing at Random, MAR), meaning listwise deletion (drop_na()) is an appropriate method for handling missing data in subsequent analyses, with minimal impact on the validity of results.
+(2) Ordinal Variable Assumption: Ordinal survey responses (e.g., CPolice, Happy, coded on a 1-10 scale) are treated as numerical variables for statistical analysis. This is a standard practice in social science research for WVS data, as it enables the calculation of meaningful summary statistics (e.g., mean, correlation) and aligns with the assignment guidelines.
+(3) Following discussions with the teaching team, I assume that in the ICQ variables, the value 0 represents "Not mentioned" (equivalent to the value 2 in the WVS Codebook), while 1 represents "Important/Mentioned."
+(4) Following the guidance of the teaching team, negative values (e.g., -1 to -5) representing "Don’t know" or "No answer" are converted to NA. This ensures that subsequent statistical calculations (like means and correlations) are not skewed by non-meaningful numeric placeholders.
+
+
+Analysis Code & Results
+# Clear the environment
+```{r}
+rm(list = ls()) 
+```
+
+
+
+# install.packages(c("tidyverse", "naniar", "corrplot")) 
+```{r}
+library(tidyverse)
+library(naniar)
+library(corrplot)
+```
+
+
+# Load personal dataset (add file existence check to prevent errors without warning)
+```{r}
+file_name <- "FIT3152A1Data_JunqiZhou.csv"
+if (!file.exists(file_name)) {
+  stop(paste("Error: file", file_name, "Does not exist. Please check the filename/path!"))
+}
+VC <- read.csv(file_name) 
+```
+
+
+# Handling negative responses: As discussed, invalid values such as -1, -2, -4 and -5 should be set to NA
+```{r}
+VC[VC < 0] <- NA
+```
+
+
+# According to Assumption 2.2.3, handle zero values in ICQ variables
+# Replace all zeros in variables beginning with 'ICQ' with 2 
+library(dplyr) 
+
+```{r}
+VC <- VC %>%
+  mutate(across(starts_with("ICQ"), ~ifelse(. == 0, 2, .)))
+```
+  
+#---------------- 1.Descriptive analysis -----------------
+#(a) 
+#Code analysis
+```{r}
+# 1. Basic data information
+cat("=== 1. Basic data information ===\n")
+dim(VC) # Number of rows, number of columns
+names(VC) # Variable name
+head(VC, 5) # First 5 lines
+```
+
+
+```{r}
+# 2. Variable types
+cat("\n=== 2. Variable types ===\n")
+str(VC)
+```
+
+
+```{r}
+# 3. Statistical characteristics of numerical variables
+cat("\n=== 3. Statistical characteristics of numerical variables ===\n")
+VC %>% 
+  select(
+    # Basic time/population variables
+    Wave, Year, Age, Sex,
+    # Life Priorities Variables
+    ILFam, ILFriends, ILLeisure, ILWork,
+    # Personality/values variables
+    ICQResonsibility, ICQImagination, ICQDetermination, ICQUnselfishness, ICQObedience,
+    # Behavioural participation variables
+    ACTReligion, ACTArtsEd, ACTUnions, ACTHumanitarian,
+    # Attitudinal variables
+    Trusted, FutureTech, IncomeEquality, Competition, HardWork,
+    # Political Attitude Variable
+    PolBoycott, PolScale, PolLeader, PolExperts, PolArmy, starts_with("C")) %>% 
+  summary()
+```
+
+
+```{r}
+# 4. Distribution of categorical variables
+cat("\n=== 4. Distribution of categorical variables ===\n")
+# Focus Country
+focus_country <- "RUS"
+# Country distribution: Show only the focus country and the top 5 most frequently visited countries
+country_table <- table(VC$Country) %>% sort(decreasing = TRUE)
+country_pct <- prop.table(country_table) * 100
+cat("Focus Country", focus_country, "percentage：", round(country_pct[focus_country], 2), "%\n")
+cat("Share of the top five countries by frequency：\n")
+print(head(country_pct, 5))
+
+# Wave distribution
+cat("\nWave distribution：\n")
+wave_pct <- prop.table(table(VC$Wave)) * 100
+print(wave_pct)
+```
+
+
+```{r}
+# 5. Missing Value Analysis
+cat("\n=== 5. Missing values ===\n")
+miss_summary <- miss_var_summary(VC) %>% mutate(pct_miss = round(pct_miss, 2))
+# Show only variables with a missing rate greater than 0 to avoid redundant output
+print(filter(miss_summary, pct_miss > 0))
+```
+
+
+```{r}
+# 6. Plotting the distribution of key variables
+# CGovernment Histogram
+VC %>% 
+  drop_na(CGovernment) %>% 
+  ggplot(aes(x = CGovernment)) +
+  geom_histogram(bins = 10, fill = "skyblue", color = "black") +
+  labs(title = "Distribution of Confidence in Government",
+       x = "Confidence in Government", y = "Frequency") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5))  
+
+# Age Boxplot
+VC %>% drop_na(Age) %>%
+ggplot(aes(y = Age)) +
+  geom_boxplot(fill = "lightgreen") +
+  labs(title = "Boxplot of Age", y = "Age") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+         
+```{r}
+# 7. Correlation analysis 
+library(dplyr)
+library(corrplot)
+
+# ==============================
+#             Trust
+# ==============================
+trust_data <- VC %>%
+  select(CArmedForces, CGovernment, CCourts) %>%
+  select(where(is.numeric)) %>%
+  drop_na()
+
+trust_cor <- cor(trust_data)
+
+corrplot(trust_cor,
+         method = "color",
+         type = "lower",
+         tl.cex = 0.9,
+         tl.col = "black",
+         main = "Correlation: Institutional Trust",
+         mar = c(0,0,2,0))
+
+
+# ==============================
+#      Political Attitudes
+# ==============================
+pol_data <- VC %>%
+  select(PolBoycott, PolScale, PolLeader, PolExperts, PolArmy) %>%
+  select(where(is.numeric)) %>%
+  drop_na()
+
+pol_cor <- cor(pol_data)
+
+corrplot(pol_cor,
+         method = "color",
+         type = "lower",
+         order = "hclust",
+         tl.cex = 0.7,
+         tl.srt = 45,
+         main = "Correlation: Political Attitudes",
+         mar = c(0,0,2,0))
+
+
+# ==============================
+#        Life Priorities
+# ==============================
+value_data <- VC %>%
+  select(ILFam, ILFriends, ILLeisure, ILWork) %>%
+  select(where(is.numeric)) %>%
+  drop_na()
+
+value_cor <- cor(value_data)
+
+corrplot(value_cor,
+         method = "color",
+         type = "lower",
+         tl.cex = 0.9,
+         main = "Correlation: Life Priorities",
+         mar = c(0,0,2,0))
+
+
+# ==============================
+#     Personality / Values
+# ==============================
+personality_data <- VC %>%
+  select(ICQResonsibility, ICQImagination, ICQDetermination,
+         ICQUnselfishness, ICQObedience) %>%
+  select(where(is.numeric)) %>%
+  drop_na()
+
+personality_cor <- cor(personality_data)
+
+corrplot(personality_cor,
+         method = "color",
+         type = "lower",
+         order = "hclust",
+         tl.cex = 0.7,
+         tl.srt = 45,
+         main = "Correlation: Personality Traits",
+         mar = c(0,0,2,0))
+```
+      
+         
+         
+#Results Interpretation
+1. Dimensional Structure
+The personal World Values Survey dataset (FIT3152A1Data_JunqiZhou.csv) consists of 100,000 observations (rows) and 36 variables (columns), generated via random sampling (seed=34572228) from the original WVSExtract.csv file. The variables are structured into three core categories:
+Contextual variables(3): Wave (survey wave), Country (respondent’s country), Year (survey year);
+Attribute variables (25): Demographics (Age, Sex), life priorities (ILFam, ILFriends, ILLeisure, ILWork), personality/value traits (ICQResonsibility, ICQImagination, etc.), behavioral participation (ACTReligion, ACTArtsEd, etc.), subjective attitudes (Trusted, FutureTech, etc.), and political attitudes (PolBoycott, PolScale, etc.);
+Confidence variables (8, prefixed with "C"): Institutional confidence metrics (CArmedForces, CGovernment, CCourts, etc.).
+
+2. Variable Types
+Numerical variables: Most variables are integer or numeric, including Age, Sex, Wave, Year, IL/ICQ/ACT/Pol/C series.
+Categorical variable: Country is a character variable representing national codes.
+
+3. Distribution of Numerical Responses
+Key numerical variables exhibit distinct statistical properties (summarized from summary() and visualizations):
+#Demographics:
+-Age: Mean = 41.88, median = 40.00, range 13-99 (1182 missing values). The boxplot shows a roughly symmetric distribution with no extreme outliers, centered on middle age (28-54 for 1st/3rd quartiles).
+-Sex: Mean = 1.522 (median = 2.000), indicating a slight majority of female respondents (Sex=2) with 1304 missing values.
+
+#Life priorities (IL variables, 1=most important to 4=least important):
+-ILFam (family): Mean = 1.111 (median=1), confirming family as the top priority for nearly all respondents.
+-ILWork (work): Mean = 1.512 (median=1), second-highest priority among life values.
+
+#Personality/values (ICQ variables, 1=important/2=not important):
+-ICQResonsibility: Mean = 1.301 (median=1), showing responsibility is widely valued.
+-ICQImagination/Determination/Unselfishness/Obedience: All have means ~1.6-1.8 (median=2), indicating these traits are less universally prioritized than responsibility.
+
+#Institutional confidence (C variables, 1=highest to 4=lowest confidence):
+-CGovernment: Mean = 2.597 (median=3), with a histogram showing a right-skewed distribution (most respondents report moderate-to-low confidence in government).
+-CArmedForces: Mean = 2.18 (median=2), the highest confidence among core institutional variables.
+
+#Political/social attitudes:
+-IncomeEquality: Mean = 5.805 (1-10 scale), reflecting moderate support for income equality.
+-Competition: Mean = 3.756 (1-10 scale), indicating low-to-moderate positive views on competition.
+
+4. Variety of Non-Numerical (Categorical) Responses
+#Country distribution:
+The dataset includes dozens of countries; Russia (RUS) accounts for 2.88% of the sample.
+Top 5 countries by sample size: ZAF (4.637%), IND (4.037%), COL (3.469%), TUR (3.269%), MEX (3.225%)—collectively representing ~18.61% of total observations.
+#Wave distribution (survey waves 1-7):
+Wave 7 is the most frequent (20.733%), followed by Wave 5 (19.009%) and Wave 6 (18.715%).
+Wave 1 is the least frequent (2.850%), reflecting uneven temporal coverage of WVS surveys.
+
+5. Missing Values
+#Overall quality: While the total missing cell count is not explicitly calculated, variable-level missingness reveals significant variation:
+-Severe missingness: CEU (75.4% missing) – by far the most incomplete variable, likely due to regional relevance (EU-focused).
+-Moderate missingness: PolScale (29.4%), ACTArtsEd (24.1%), ACTReligion (24.1%), ACTHumanitarian (23.8%), ACTUnions (23.2%), HardWork (22.5%)—all >20% missing.
+
+6. Other Notable Observations
+#Institutional trust: 
+Strong positive correlations (r ≈ 0.6–0.8) between confidence in the armed forces, government, and courts, indicating a cohesive trust in state institutions.
+#Political attitudes: 
+An "authority trust" cluster (PolExperts, PolLeader, PolArmy) shows moderate positive correlations, while political action (PolBoycott) and ideology (PolScale) are largely independent of this cluster.
+#Life priorities: 
+A weak negative correlation between family (ILFam) and work (ILWork) priorities, alongside a moderate positive correlation between friends (ILFriends) and leisure (ILLeisure).
+#Personality traits: 
+Responsibility (ICQResonsibility) and obedience (ICQObedience) are moderately positively correlated, while unselfishness (ICQUnselfishness) is an independent trait.
+
+
+
+
+#-------------------- 2.Focus country vs all other countries as a group (independent of time). -------------------- 
+```{r}
+library(tidyverse)
+library(knitr)
+library(corrplot)
+
+# 1. Definition of core variables 
+attr_vars <- c("Age", "Sex", "ILFam", "ILFriends", "ILLeisure", "ILWork",
+               "ICQResonsibility", "ICQImagination", "ICQDetermination", 
+               "ICQUnselfishness", "ICQObedience", "Trusted", "FutureTech",
+               "IncomeEquality", "Competition", "HardWork", "PolLeader", "PolExperts", "PolArmy")
+
+conf_vars <- c("CArmedForces", "CGovernment", "CCourts", "CParliament")
+
+# 2. Data cleansing pipeline
+VC_clean <- VC %>%
+  # Handling negative numbers and specific encodings
+  mutate(across(where(is.numeric), ~ifelse(. < 0, NA, .))) %>%
+  mutate(across(starts_with("ICQ"), ~ifelse(. == 0, 2, .))) %>%
+  # Create comparison groups
+  mutate(Group = ifelse(Country == "RUS", "Russia", "Other Countries")) %>%
+  select(Group, all_of(attr_vars), all_of(conf_vars))
+```
+
+#(a)
+```{r}
+q2a_summary <- VC_clean %>%
+  group_by(Group) %>%
+  summarise(across(everything(), mean, na.rm = TRUE)) %>%
+  pivot_longer(-Group, names_to = "Variable", values_to = "Mean") %>%
+  pivot_wider(names_from = Group, values_from = Mean) %>%
+  mutate(Diff = Russia - `Other Countries`,
+         Pct_Diff = (Diff / `Other Countries`) * 100)
+
+# Use kable to display the top 10 variables with the most significant differences
+kable(head(q2a_summary %>% arrange(desc(abs(Pct_Diff))), 10), 
+      digits = 2, caption = "Top 10 Variables with Largest Mean Differences")
+
+# Visualisation: Select four key variables for comparison
+target_vars <- c("CGovernment", "CArmedForces", "ILWork", "HardWork")
+VC_clean %>%
+  select(Group, all_of(target_vars)) %>%
+  pivot_longer(-Group) %>%
+  ggplot(aes(x = Group, y = value, fill = Group)) +
+  geom_boxplot(alpha = 0.7, na.rm = TRUE) +
+  facet_wrap(~name, scales = "free_y") +
+  theme_minimal() +
+  labs(title = "Figure 2.1: Key Distribution Differences (Russia vs Others)")
+
+```
+#1. Significant differences in life values (Life Priorities)
+##Attitudes towards work (ILWork & HardWork):
+This is the most significant point of difference. Russians score significantly higher than the global average on both ILWork (1.80 vs 1.50) and HardWork (4.90 vs 4.30).
+
+###Interpretation: 
+This suggests that Russians place less importance on the notion that ‘work is important in life’ and that ‘hard work is the key to success’ compared to the global average. This may reflect a relatively weak identification with traditional values of hard work and striving for success within Russian society during its period of transition.
+
+##Family and Friends (ILFam & ILFriends):
+Russia’s scores on both items are also slightly higher, indicating that the importance placed on social and family life is slightly lower than the global average, although the margin of difference (7.1% and 9.66%) is not as pronounced as for the work variables.
+
+#2. Institutional Trust and Perceptions of the Rule of Law (Institutional Trust)
+##Trust in the Judiciary (CCourts):
+Russia’s score (2.73) is significantly higher than that of other countries (2.42), with a difference of 12.94%.
+
+###Interpretation: 
+A higher value indicates lower levels of trust. This suggests that Russian respondents’ trust in the courts and the judicial system is significantly lower than the global average.
+
+##Armed Forces and Government (CArmedForces & CGovernment):
+As shown in the box plot (Figure 2.1), the medians (black lines) for these two items are very close, but the distribution range for Russia differs slightly. When viewed in conjunction with the mean table, trust in Russia towards law enforcement agencies (such as the armed forces) tends to be more robust than trust in civil institutions (such as the courts).
+
+#3. Political Leadership and Attitudes towards Technology (Politics & Technology)
+##Preference for Strong Leadership (PolLeader):
+This is a key finding. Russia’s score (2.27) is significantly lower than that of other countries (2.70), with a negative deviation of 15.67%.
+
+###Interpretation: 
+A lower score indicates greater agreement. This suggests that Russian respondents are far more likely than the global average to endorse the idea of ‘having a strong leader who is not constrained by parliament or elections’.
+
+##Technological Optimism (FutureTech):
+Russia’s score is lower (1.24 vs 1.38), indicating that Russians hold higher expectations and a more optimistic attitude towards the idea that ‘science and technology will make life better in the future’.
+
+Summary of Findings for Q2(a):The Russian Federation exhibits a distinct socio-cultural profile compared to the global aggregate. The most prominent difference lies in work ethics, where Russians report a significantly lower emphasis on the importance of work and the necessity of hard work for success (Pct\_Diff > 13\%).Furthermore, the data highlights a dual-character institutional perception: while Russians show a stronger preference for decisive political leadership (lower PolLeader score), they express notably lower confidence in the judicial system (CCourts).Demographically, the sampled Russian population is slightly older (mean age 44.5 vs 41.8), which may also influence these conservative institutional and value-based leanings.
+
+
+(b)&(c)
+```{r}
+# 1. Define the independent variable (attribute) and the dependent variable (social institution)
+predictors <- c("Age", "Sex", "Trusted", "IncomeEquality", "HardWork", 
+                "ICQResonsibility", "FutureTech", "PolLeader")
+
+target_orgs <- c("CGovernment", "CArmedForces", "CCourts", "CParliament")
+
+# 2. Developing a robust multi-objective regression function
+run_multi_org_models <- function(data, group_label) {
+  cat("\n======================================================\n")
+  cat("  Start analysing the groups：", group_label, "\n")
+  cat("======================================================\n")
+  
+  results_summary <- list()
+  
+  for (org in target_orgs) {
+    # Dynamic formula: Organisation ~ Attribute 1 + Attribute 2 + ...
+    formula_str <- paste(org, "~", paste(predictors, collapse = " + "))
+    model <- lm(as.formula(formula_str), data = data)
+    
+    # Key information: Adjusted R-squared and significant independent variables
+    sum_mod <- summary(model)
+    adj_r2 <- sum_mod$adj.r.squared
+    
+    # Identify significant variables with a p-value < 0.05
+    sig_vars <- rownames(sum_mod$coefficients)[sum_mod$coefficients[,4] < 0.05]
+    sig_vars <- sig_vars[sig_vars != "(Intercept)"]
+    
+    cat("\n>>> Forecast target [", org, "]:\n")
+    cat("Model reliability (Adj.R^2):", round(adj_r2, 4), "\n")
+    cat("Key predictors:", paste(sig_vars, collapse = ", "), "\n")
+    
+    results_summary[[org]] <- list(adj_r2 = adj_r2, sig_vars = sig_vars)
+  }
+  return(results_summary)
+}
+
+# 3. operate separately in Russia and other countries
+rus_results <- run_multi_org_models(filter(VC_clean, Group == "Russia"), "Russia")
+others_results <- run_multi_org_models(filter(VC_clean, Group == "Other Countries"), "Other Countries")
+```
+#Q2(b): Focus Country Analysis (Russia)
+1. Which social organisations can be more reliably predicted?In the Russian Federation, confidence in the Armed Forces (CArmedForces) and the Courts (CCourts) can be predicted most reliably among the tested institutions, yielding Adjusted $R^2$ values of 0.0483 and 0.0445, respectively. In contrast, confidence in Parliament (CParliament) is the hardest to predict ($R^2$ = 0.0255). This indicates that Russians' trust in "hard power" and judicial enforcement is more deeply structurally aligned with their personal demographics and core values than their trust in representative legislative bodies.
+2. Which attributes seem to be the best predictors?The best and most consistent predictors across Russian institutions are attitudes toward economic systems—specifically, IncomeEquality and HardWork, which are significant across all four models. Additionally, PolLeader (preference for strong leadership) is a critical predictor for confidence in executive/coercive branches (Government and Armed Forces). Interestingly, general interpersonal trust (Trusted) is a significant predictor for civil institutions (Government, Courts, Parliament) but is completely absent from predicting confidence in the Armed Forces.
+
+#Q2(c): Other Countries as a Group1. 
+1.Which social organisations can be more reliably predicted?For the global aggregate (Other Countries), the predictability of confidence across all four organisations is notably uniform and uniformly low, ranging tightly from an Adjusted $R^2$ of 0.0263 (Parliament) to 0.0293 (Armed Forces). Unlike Russia, there is no single institution whose trust is drastically easier to predict using these baseline attributes.
+2. Which attributes are the strongest predictors?Globally, the strongest and most ubiquitous predictors are Trusted (General interpersonal trust) and HardWork, which are highly significant across all models. Furthermore, FutureTech (optimism about technology) and PolLeader appear frequently, showing that a baseline level of global institutional trust is tied to social optimism and general faith in human progress.
+
+#Comparative Insights:
+When comparing Russia to the global aggregate, two profound differences emerge:
+##Predictive Magnitude: 
+The Russian models exhibit a notably higher predictive power for specific institutions—particularly the Armed Forces (4.83% vs 2.93%) and Courts (4.45% vs 2.68%). This suggests that in Russia, trust in the military and judiciary is less random and more strongly polarized along specific demographic and ideological lines than in the rest of the world.
+##The Role of General Trust vs. Authority: 
+Globally, interpersonal trust (Trusted) is a universal foundational predictor for trusting any institution, including the military. However, in Russia, confidence in the Armed Forces bypasses general human trust entirely, relying instead on age, views on income equality, and an affinity for strong political leadership (PolLeader). This highlights a unique socio-political mechanism in Russia where military trust is anchored in authoritarian preference rather than general social capital.
+
+
+# --- Question 3: Time-Trend Analysis (RUS vs Others) ---
+```{r}
+library(tidyverse)
+library(broom)
+
+# 1. Key steps: Add group labels to the cleaned VC and select the required columns
+# This step is to enable the code to distinguish between "Russia" and "Other Countries"
+VC_analysis <- VC %>%
+  mutate(Group = ifelse(Country == "RUS", "Russia", "Other Countries")) %>%
+  # Ensure that the 'Wave' sequence exists
+  filter(!is.na(Wave))
+
+# ======================================================
+# (a) Changes in the mean over time (using trust in the government as an example)
+# ======================================================
+q3a_trends <- VC_analysis %>%
+  group_by(Wave, Group) %>%
+  summarise(mean_val = mean(CGovernment, na.rm = TRUE), .groups = 'drop')
+
+# Figure 3.1
+ggplot(q3a_trends, aes(x = Wave, y = mean_val, color = Group, group = Group)) +
+  geom_line(linewidth = 1.2, na.rm = TRUE) +
+  geom_point(size = 3, na.rm = TRUE) +
+  scale_x_continuous(breaks = sort(unique(VC_analysis$Wave))) +
+  theme_minimal() +
+  labs(title = "Figure 3.1: Confidence in Government Over Time",
+       subtitle = "Russia vs Other Countries (Lower is more confident)",
+       x = "Survey Wave", y = "Mean Score")
+
+# ======================================================
+# (b) Changes in predictive ability (Adj. R-squared) over time
+# ======================================================
+# Run the regression model for each wave
+q3b_models <- VC_analysis %>%
+  # Automatically remove NA values from the independent variables to ensure the model runs successfully
+  drop_na(CGovernment, Age, Sex, Trusted, IncomeEquality, HardWork, PolLeader) %>%
+  group_by(Wave, Group) %>%
+  nest() %>%
+  mutate(
+    model = map(data, ~lm(CGovernment ~ Age + Sex + Trusted + IncomeEquality + HardWork + PolLeader, data = .x)),
+    glance_stats = map(model, glance)
+  )
+
+# Extract R2 plot data
+r2_trend <- q3b_models %>% unnest(glance_stats) %>% select(Wave, Group, adj.r.squared)
+
+# Figure 3.2
+ggplot(r2_trend, aes(x = Wave, y = adj.r.squared, color = Group, group = Group)) +
+  geom_line(linewidth = 1.2) + geom_point(size = 3) +
+  theme_minimal() +
+  labs(title = "Figure 3.2: Predictive Power (Adj. R-squared) Over Time",
+       x = "Survey Wave", y = "Adjusted R-squared")
+```
+#Question 3 Analysis Report
+Scope of Analysis:
+Since there are many attitude variables in the dataset, I use CGovernment as a simple way to represent participant responses. This helps keep the analysis clear and focused, although it only shows one aspect of overall attitudes.
+While “social organisations” encompass multiple institutional measures, this analysis focuses on Confidence in Government (CGovernment) as a representative indicator of participant responses over time. Institutional trust is a central dimension of public attitudes and provides a clear basis for longitudinal comparison. Focusing on a single variable also ensures clarity and avoids unnecessary complexity, while still allowing meaningful comparison between Russia and other countries. Preliminary inspection suggests that other institutional trust variables follow broadly similar patterns.
+##(a) Temporal Variations in Participant Responses (Figure 3.1)
+###1. Description of Changes Over Time
+Figure 3.1 illustrates the mean confidence score for Government (CGovernment) across successive survey waves.Russia's Trajectory: Russia shows a dramatic "U-shaped" recovery in confidence. In Wave 3, Russian confidence was significantly lower than the global average (mean score > 3.0, indicating high distrust). However, from Wave 3 to Wave 7, there is a consistent and sharp improvement (the line trends downward toward "more confidence"). By Wave 6 and 7, Russian confidence has not only surpassed its own historical levels but has also become stronger than the global average.Other Countries' Trajectory: In contrast, the global aggregate ("Other Countries") remains remarkably stable, hovering between 2.5 and 2.7. This suggests that while the rest of the world maintained a steady, moderate level of institutional trust, Russia underwent a profound social or political realignment.
+###2. Statistical Significance and Comparison
+The changes in Russia are statistically significant. The steep slope between Wave 3 and Wave 7 indicates a non-random shift in public sentiment. The major difference between the two groups is the volatility and directionality: Russia moved from extreme skepticism to relatively high trust, while the global group showed no such systematic trend. This divergence suggests that Russian institutional trust is highly sensitive to specific national historical periods (e.g., the post-Soviet transition versus the stabilization in the 2010s).
+###3. Graphic Design Reasoning
+I selected a dual-series line chart for Figure 3.1 because the primary objective is to visualize continuity and divergence. Line charts are the most effective tool for highlighting "shocks" in time-series data. By plotting both groups on the same y-axis, the reader can immediately perceive that Russia’s trend is not part of a global movement but is a unique national phenomenon. The inclusion of markers (points) ensures that waves with missing data (like Russia in Wave 4) are clearly identified by a gap, maintaining data integrity.
+
+##(b) Predictive Power and Attribute Shifts (Figure 3.2)
+###1. Ability to Predict Confidence Over Time
+Figure 3.2 displays the Adjusted $R^2$ of our regression models, which represents how well personal attributes (Age, Sex, HardWork, etc.) explain the variation in government confidence.The "Predictability Explosion" in Russia: In Wave 3, the Adjusted $R^2$ for Russia was near zero (negative or close to 0.00), meaning that in that era, institutional trust was almost "random" or couldn't be explained by individual demographics/values. However, from Wave 5 onwards, there is a vertical surge in $R^2$, peaking at over 0.05 in Wave 6.Other Countries: The global group shows a slow, linear increase in $R^2$, moving from roughly 0.015 to 0.028.
+###2. Interpretation of Major Differences
+The predictive power in Russia is now nearly double that of the global average. This is a critical finding. It implies that in modern Russia (Waves 6 and 7), trusting the government is no longer a random sentiment; instead, it has become highly "structured". Whether a Russian citizen trusts the government is now strongly tied to who they are (e.g., their age or their view on political leadership). In the global group, trust remains more "diffuse" and less tied to specific individual attributes.
+###3. Best Predictors and Reasoning
+As the $R^2$ rose, attributes like PolLeader (Preference for strong leadership) and HardWork became increasingly dominant in the Russian model. This suggests a polarization of the Russian society: the "drivers" of trust have narrowed down to specific ideological beliefs.
+###4. Graphic Design Reasoning
+Figure 3.2 uses a comparative trendline of model fit ($R^2$). The reasoning for this design is to elevate the analysis from "what people think" to "how systematically they think." By visualizing the $R^2$ itself as a time-series variable, we demonstrate that the relationship between variables is not static. The use of a high-contrast color scheme (Teal vs. Coral) emphasizes the "crossover" point where the Russian model's explanatory power suddenly eclipsed the global baseline, providing a clear visual answer to the research question.
+
+#Appendix: Details of Generative AI Usage
+1.Technology used: Gemini
+
+2.Generated information: R code examples, R functions, and syntax guidance for data processing, visualization, and linear regression tasks.
+
+3.Prompts used: How to draw boxplots/histograms in R; how to remove NA warnings in ggplot2; how to run group-wise linear regression with map(); how to compute mean comparisons; how to create time-trend line plots; how to extract adjusted R-squared from lm() models.
+
+4.Use of output: AI outputs were used only to assist with R coding (data analysis and plotting). All code was adapted to the assignment dataset. AI was not used to write reports, generate conclusions, or complete analysis text.
